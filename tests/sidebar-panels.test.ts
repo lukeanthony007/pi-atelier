@@ -107,10 +107,11 @@ describe("sidebar contribution protocol", () => {
 		const response = emitted.at(-1) as { type?: string; requestId?: string };
 		expect(response).toMatchObject({ type: "register", requestId: "π-界🙂" });
 
-		const registryEvents = {
-			on: () => () => undefined,
-			emit: (_channel: string, data: unknown) => emitted.push(data),
-		};
+		const registryTransport = eventTransport();
+		const registryEvents = registryTransport.events;
+		vi.spyOn(registryEvents, "emit").mockImplementation((_channel, data) => {
+			emitted.push(data);
+		});
 		const registry = disposeAfterTest(
 			createSidebarPanelRegistry({
 				events: registryEvents,
@@ -386,10 +387,10 @@ describe("sidebar contribution protocol", () => {
 		expect(registry.getAvailable()).toEqual([]);
 
 		const emitted: unknown[] = [];
-		const events = {
-			on: () => () => undefined,
-			emit: (_channel: string, data: unknown) => emitted.push(data),
-		};
+		const events = eventTransport().events;
+		vi.spyOn(events, "emit").mockImplementation((_channel, data) => {
+			emitted.push(data);
+		});
 		const invalidIdPublisher = disposeAfterTest(
 			registerSidebarPanel({ events }, { ...safePanel, id: longId }),
 		);

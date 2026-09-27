@@ -6,7 +6,7 @@ import {
 	start,
 	todoBranchEntry,
 	command,
-	renderOverlayText,
+	renderSidebarText,
 	queueWorkspacePulseInspection,
 	execResult,
 } from "./helpers/extension.js";
@@ -58,8 +58,8 @@ describe("extension activity", () => {
 		const h = harness("tui", "darwin");
 		await start(h);
 		await h.dispatch("agent_start", { type: "agent_start" });
-		await h.dispatch("agent_settled", { type: "agent_settled" });
-		await h.dispatch("agent_settled", { type: "agent_settled" });
+		await h.dispatch("agent_end", { type: "agent_end", messages: [] });
+		await h.dispatch("agent_end", { type: "agent_end", messages: [] });
 
 		expect(h.spawnNotificationProcess).toHaveBeenCalledTimes(1);
 		expect(h.ctx.ui.notify).not.toHaveBeenCalled();
@@ -69,10 +69,10 @@ describe("extension activity", () => {
 		const h = harness("tui", "darwin");
 		await start(h);
 		await h.dispatch("agent_start", { type: "agent_start" });
-		await h.dispatch("agent_settled", { type: "agent_settled" });
+		await h.dispatch("agent_end", { type: "agent_end", messages: [] });
 
 		await h.dispatch("turn_start", { type: "turn_start", turnIndex: 1 });
-		await h.dispatch("agent_settled", { type: "agent_settled" });
+		await h.dispatch("agent_end", { type: "agent_end", messages: [] });
 
 		expect(h.spawnNotificationProcess).toHaveBeenCalledTimes(2);
 	});
@@ -82,9 +82,19 @@ describe("extension activity", () => {
 		await start(h);
 		await h.dispatch("agent_start", { type: "agent_start" });
 		h.ctx.isIdle.mockReturnValue(false);
-		await h.dispatch("agent_settled", { type: "agent_settled" });
+		await h.dispatch("agent_end", { type: "agent_end", messages: [] });
 
 		expect(h.ctx.ui.notify).not.toHaveBeenCalled();
+	});
+
+	it("waits for OMP's final agent_end before notifying after automatic continuation", async () => {
+		const h = harness("tui", "darwin");
+		await start(h);
+		await h.dispatch("agent_start", { type: "agent_start" });
+		await h.dispatch("agent_end", { type: "agent_end", messages: [], willContinue: true });
+		expect(h.spawnNotificationProcess).not.toHaveBeenCalled();
+		await h.dispatch("agent_end", { type: "agent_end", messages: [], willContinue: false });
+		expect(h.spawnNotificationProcess).toHaveBeenCalledOnce();
 	});
 
 	it("sends one native notification for each actual ask-user blocked interval", async () => {
@@ -119,14 +129,14 @@ describe("extension activity", () => {
 			args: { command: "npm test -- tests/extension.test.ts" },
 		});
 
-		const sidebarText = renderOverlayText(h, 0, 44);
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("ACTIVITY");
 		expect(sidebarText).toContain("Turn 3");
 		expect(sidebarText).toContain("running");
 		expect(sidebarText).toContain("bash");
 		expect(sidebarText).toContain("npm test");
 		expect(sidebarText).toContain("Working");
-		expect(h.overlays[0]?.requestRender.mock.calls.length).toBeGreaterThan(0);
+		expect(h.sidebarRequestRender.mock.calls.length).toBeGreaterThan(0);
 
 		const footer = h.setFooter.mock.calls[0]?.[0](
 			{ requestRender: vi.fn() },
@@ -155,8 +165,8 @@ describe("extension activity", () => {
 			await start(h);
 			await h.dispatch("agent_start", { type: "agent_start" });
 			const opening = command(h, "display");
-			await h.mounted(1);
-			expect(h.overlays).toHaveLength(2);
+			await h.mounted(0);
+			expect(h.overlays).toHaveLength(1);
 			const workspace = h.overlays.at(-1)!.component;
 			// Walk to the performance segment by name; its position in the list is not part of this test.
 			for (let guard = 20; guard > 0; guard -= 1) {
@@ -192,7 +202,7 @@ describe("extension activity", () => {
 
 			expect(footerRequestRender).toHaveBeenCalled();
 			expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 ~");
-			expect(renderOverlayText(h)).toMatch(/First token\s+820ms/);
+			expect(renderSidebarText(h)).toMatch(/First token\s+820ms/);
 
 			vi.setSystemTime(2_920);
 			await h.dispatch("message_update", {
@@ -201,7 +211,7 @@ describe("extension activity", () => {
 				assistantMessageEvent: { type: "text_delta", delta: "more output" },
 			});
 			expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 ~20.0/s");
-			expect(renderOverlayText(h)).toMatch(/Output speed\s+~20\.0 tok\/s/);
+			expect(renderSidebarText(h)).toMatch(/Output speed\s+~20\.0 tok\/s/);
 
 			vi.setSystemTime(4_420);
 			await h.dispatch("message_end", {
@@ -209,7 +219,7 @@ describe("extension activity", () => {
 				message: { role: "assistant", usage: { output: 120 } },
 			});
 			expect(footer.render(160).join("\n")).toContain("\uf017 820ms  \uf0e7 48.0/s");
-			expect(renderOverlayText(h)).toMatch(/Output speed\s+48\.0 tok\/s/);
+			expect(renderSidebarText(h)).toMatch(/Output speed\s+48\.0 tok\/s/);
 			workspace.handleInput("\u001b");
 			await opening;
 		} finally {
@@ -305,20 +315,20 @@ describe("extension activity", () => {
 				isError: false,
 			});
 
-			const withResult = renderOverlayText(h, 0, 44);
+			const withResult = renderSidebarText(h);
 			expect(withResult).toContain("Run · running");
 			expect(withResult).not.toContain("src/run-activity.ts");
 			expect(withResult).not.toContain("done 1s");
 			expect(withResult).not.toContain("tools 1 done · 0 failed");
 
-			const rendersBeforeTick = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
+			const rendersBeforeTick = h.sidebarRequestRender.mock.calls.length;
 			vi.advanceTimersByTime(1_000);
-			expect(h.overlays[0]?.requestRender.mock.calls.length).toBeGreaterThan(rendersBeforeTick);
+			expect(h.sidebarRequestRender.mock.calls.length).toBeGreaterThan(rendersBeforeTick);
 
 			vi.setSystemTime(4_000);
-			await h.dispatch("agent_settled", { type: "agent_settled" });
-			const settledRenderCount = h.overlays[0]?.requestRender.mock.calls.length ?? 0;
-			const settledText = renderOverlayText(h, 0, 44);
+			await h.dispatch("agent_end", { type: "agent_end", messages: [] });
+			const settledRenderCount = h.sidebarRequestRender.mock.calls.length;
+			const settledText = renderSidebarText(h);
 			expect(settledText).toContain("Last run · 3s");
 			expect(settledText).not.toContain("settled 3s");
 			expect(settledText).toContain("Ready");
@@ -327,7 +337,7 @@ describe("extension activity", () => {
 			expect(settledText).toContain("done 1s");
 
 			vi.advanceTimersByTime(3_000);
-			expect(h.overlays[0]?.requestRender.mock.calls.length).toBe(settledRenderCount);
+			expect(h.sidebarRequestRender.mock.calls.length).toBe(settledRenderCount);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -362,7 +372,7 @@ describe("extension activity", () => {
 			args: { path: "/tmp/project/newer.ts" },
 		});
 
-		const live = renderOverlayText(h);
+		const live = renderSidebarText(h);
 		expect(live).toContain("Turn 2 · running");
 		expect(live).toContain("newer.ts");
 		expect(live).toContain("+1");
@@ -381,7 +391,7 @@ describe("extension activity", () => {
 		await h.dispatch("agent_start", { type: "agent_start" }, eventCtx);
 		await h.dispatch("turn_start", { type: "turn_start", turnIndex: 0, timestamp: 1_000 }, eventCtx);
 
-		const text = renderOverlayText(h, 0, 44);
+		const text = renderSidebarText(h);
 		expect(text).toContain("Working");
 		expect(text).toContain("ACTIVITY");
 		expect(text).toContain("Turn 1");

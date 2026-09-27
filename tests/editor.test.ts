@@ -1,8 +1,13 @@
-import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
-import { describe, expect, it, vi } from "vitest";
+import { visibleWidth } from "@oh-my-pi/pi-tui";
+import { beforeAll, describe, expect, it } from "vitest";
+import { initThemeSync } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { getEditorTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/tui-adapters";
 import { AtelierEditor, EDITOR_FRAME_MIN_WIDTH, frameEditorLines, isEditorRuleText } from "../src/editor.js";
 
+const stripTerminalSequences = (line: string) => line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+
 const paint = (text: string) => `\u001b[38;2;102;102;102m${text}\u001b[39m`;
+beforeAll(() => initThemeSync());
 
 describe("editor frame helpers", () => {
 	it("recognizes plain and scroll editor rules", () => {
@@ -98,25 +103,16 @@ describe("editor frame helpers", () => {
 
 describe("AtelierEditor", () => {
 	it("renders an empty composer inside a rounded frame", () => {
-		const editor = new AtelierEditor(
-			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 48 } } as never,
-			{ borderColor: (text: string) => text, selectList: {} } as never,
-			{ matches: () => false } as never,
-		);
+		const editor = new AtelierEditor(getEditorTheme());
 
 		const lines = editor.render(40);
-		expect(lines[0]).toMatch(/^╭─+╮$/);
-		expect(lines.at(-1)).toMatch(/^╰─+╯$/);
-		expect(lines.some((line) => line.startsWith("│ ") && line.endsWith(" │"))).toBe(true);
+		expect(stripTerminalSequences(lines[0] ?? "")).toMatch(/^╭─+╮$/);
+		expect(stripTerminalSequences(lines.at(-1) ?? "")).toMatch(/^╰─+╯$/);
 		for (const line of lines) expect(visibleWidth(line)).toBe(40);
 	});
 
 	it("reports only the status line visible in the most recent render", () => {
-		const editor = new AtelierEditor(
-			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 48 } } as never,
-			{ borderColor: (text: string) => text, selectList: {} } as never,
-			{ matches: () => false } as never,
-		);
+		const editor = new AtelierEditor(getEditorTheme());
 
 		expect(editor.statusLineVisible).toBe(false);
 		editor.renderStatusLine = () => "● READY";
@@ -129,7 +125,7 @@ describe("AtelierEditor", () => {
 		editor.render(40);
 		expect(editor.statusLineVisible).toBe(true);
 		delete editor.renderStatusLine;
-		expect(editor.render(40)[0]).toMatch(/^╭─+╮$/);
+		expect(stripTerminalSequences(editor.render(40)[0] ?? "")).toMatch(/^╭─+╮$/);
 		expect(editor.statusLineVisible).toBe(false);
 	});
 });

@@ -1,5 +1,5 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { OverlayOptions, TUI } from "@earendil-works/pi-tui";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { OverlayOptions, TUI } from "@oh-my-pi/pi-tui";
 
 /** Session lifetime shared by every interactive overlay owned by the extension. */
 export interface OverlayLifetime {

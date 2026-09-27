@@ -4,10 +4,10 @@ import { deferred, settleMicrotasks } from "./async.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getAgentDir, setAgentDir } from "@oh-my-pi/pi-utils/dirs";
 import { vi, onTestFinished } from "vitest";
-import { type ExtensionEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionEvent } from "@oh-my-pi/pi-coding-agent";
 import atelierExtension, { type AtelierExtensionDependencies } from "../../extensions/index.js";
-import { AtelierEditor } from "../../src/editor.js";
 import { loadConfig as loadAtelierConfig, validateConfig } from "../../src/config.js";
 
 let persistedConfig = false;
@@ -42,6 +42,24 @@ export function harness(
 	const shortcutHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
 	const setFooter = vi.fn();
 	const setEditorComponent = vi.fn();
+	const sidebars: Array<{
+		component: { render(width: number): string[] };
+		options?: { width?: number; minMainWidth?: number };
+	}> = [];
+	let activeSidebar: (typeof sidebars)[number] | undefined;
+	const setSidebar = vi.fn(
+		(
+			factory:
+				| ((tui: unknown, theme: typeof FOOTER_THEME) => { render(width: number): string[] })
+				| undefined,
+			options?: { width?: number; minMainWidth?: number },
+		) => {
+			activeSidebar = factory
+				? { component: factory(tui, FOOTER_THEME), ...(options ? { options } : {}) }
+				: undefined;
+			if (activeSidebar) sidebars.push(activeSidebar);
+		},
+	);
 	let terminalInput: ((data: string) => unknown) | undefined;
 	let terminalInputUnsubscribe = vi.fn();
 	const terminalWrite = vi.fn();
@@ -83,6 +101,7 @@ export function harness(
 		},
 		ui: {
 			setFooter,
+			setSidebar,
 			setEditorComponent,
 			notify: vi.fn(),
 			theme: {},
@@ -133,8 +152,14 @@ export function harness(
 		shortcutHandlers,
 		setFooter,
 		setEditorComponent,
+		setSidebar,
+		sidebars,
+		get activeSidebar() {
+			return activeSidebar;
+		},
 		ctx,
 		pi,
+		sidebarRequestRender: tui.requestRender,
 		overlays,
 		mounted: host.mounted,
 		custom,
@@ -192,27 +217,17 @@ export function renderOverlayText(h: ReturnType<typeof harness>, index = 0, widt
 	return overlay.component.render(width).join("\n");
 }
 
+export function renderSidebarText(h: ReturnType<typeof harness>, width = 44): string {
+	const sidebar = h.activeSidebar;
+	if (!sidebar) throw new Error("Sidebar is not mounted");
+	return sidebar.component.render(width).join("\n");
+}
+
 export const FOOTER_THEME = {
 	fg: (_color: string, text: string) => text,
 	bold: (text: string) => text,
 	italic: (text: string) => text,
 };
-
-/** Mounts the public editor/footer factories in the order Pi uses them. */
-export function mountComposer(h: ReturnType<typeof harness>) {
-	const tui = { requestRender: vi.fn(), terminal: { rows: 24, columns: 80 } };
-	const footer = h.setFooter.mock.calls[0]?.[0](tui, FOOTER_THEME, {
-		getGitBranch: () => "main",
-		getExtensionStatuses: () => new Map(),
-		onBranchChange: () => () => undefined,
-	});
-	const editor: AtelierEditor = h.setEditorComponent.mock.calls[0]?.[0](
-		tui,
-		{ borderColor: (text: string) => text, selectList: {} },
-		{ matches: () => false },
-	);
-	return { tui, footer, editor };
-}
 
 /** Builds a footer from a captured `setFooter` factory and renders it once, as Pi would. */
 export function renderFooter(
@@ -259,16 +274,17 @@ export async function withPersistedUserConfig(
 	run: () => Promise<void>,
 ): Promise<void> {
 	const previous = process.env.PI_CODING_AGENT_DIR;
+	const previousAgentDir = getAgentDir();
 	const agentDir = await mkdtemp(join(tmpdir(), "pi-atelier-extension-"));
 	try {
 		await writeFile(join(agentDir, "pi-atelier.json"), JSON.stringify(config), "utf8");
-		process.env.PI_CODING_AGENT_DIR = agentDir;
+		setAgentDir(agentDir);
 		persistedConfig = true;
 		await run();
 	} finally {
 		persistedConfig = false;
+		setAgentDir(previousAgentDir);
 		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
-		else process.env.PI_CODING_AGENT_DIR = previous;
 		await rm(agentDir, { recursive: true, force: true });
 	}
 }

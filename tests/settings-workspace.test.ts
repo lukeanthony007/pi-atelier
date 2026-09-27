@@ -1,7 +1,7 @@
 import { plainTheme as theme } from "./helpers/render.js";
 import { settleMicrotasks } from "./helpers/async.js";
 import { requiredRow, requiredIndex } from "./helpers/render.js";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { resolveDisplayLayers } from "../src/config.js";
 import { createSettingsWorkspace } from "../src/settings-workspace.js";

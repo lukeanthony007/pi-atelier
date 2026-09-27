@@ -1,5 +1,5 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { OverlayHandle } from "@earendil-works/pi-tui";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { OverlayHandle } from "@oh-my-pi/pi-tui";
 import { vi } from "vitest";
 import { deferred } from "./async.js";
 import { plainTheme } from "./render.js";
@@ -20,7 +20,7 @@ interface OverlayComponent {
 	handleInput(data: string): void;
 }
 
-/** Minimal synchronous Pi custom-dialog host; real renderer contracts use the real Pi TUI. */
+/** Minimal synchronous OMP custom-dialog host for Control Center and Display tests. */
 export function overlayHost(getTui: () => TestTui = fakeTui, interactive = true) {
 	const overlays: Array<{
 		component: OverlayComponent;
@@ -28,7 +28,7 @@ export function overlayHost(getTui: () => TestTui = fakeTui, interactive = true)
 		closed: boolean;
 		handle: { hide: ReturnType<typeof vi.fn> };
 		options: CustomOptions;
-		layout: () => import("@earendil-works/pi-tui").OverlayOptions | undefined;
+		layout: () => import("@oh-my-pi/pi-tui").OverlayOptions | undefined;
 		requestRender: TestTui["requestRender"];
 		tui: TestTui;
 	}> = [];
@@ -72,7 +72,7 @@ export function overlayHost(getTui: () => TestTui = fakeTui, interactive = true)
 			overlays.push(overlay);
 			options.onHandle?.(handle as unknown as OverlayHandle);
 			mounted.get(overlays.length - 1)?.resolve(overlay);
-			if (!layout()?.nonCapturing && !interactive) done();
+			if (!interactive) done();
 			return pending.promise;
 		},
 	);

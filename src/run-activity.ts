@@ -1,5 +1,5 @@
 import nodePath from "node:path";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Ellipsis, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import { toDisplayPath } from "./display-path.js";
 import type { DisplayValue, ResponsePerformance } from "./types.js";
 
@@ -449,5 +449,5 @@ function safeRelativePath(fromPath: string, toPath: string): string | undefined 
 }
 
 function truncateSummary(value: string, maxColumns: number): string {
-	return sanitizeText(truncateToWidth(value, maxColumns, "…"));
+	return sanitizeText(truncateToWidth(value, maxColumns, Ellipsis.Unicode));
 }

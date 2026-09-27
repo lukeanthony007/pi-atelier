@@ -1,4 +1,4 @@
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import {
 	applyDisplayTemplate,
 	derivePresetIdentity,

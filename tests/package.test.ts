@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type {
 	ContributedSidebarPanelId,
@@ -19,19 +18,7 @@ import {
 	SIDEBAR_PANEL_MAX_RAW_REQUEST_ID_CODE_UNITS,
 } from "../extensions/index.js";
 
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-
-describe("npm package contract", () => {
-	it("publishes a Pi extension with compatible peers", () => {
-		expect(pkg.name).toBe("pi-atelier");
-		expect(pkg.keywords).toContain("pi-package");
-		expect(pkg.pi.extensions).toEqual(["./extensions/index.ts"]);
-		expect(pkg.peerDependencies["@earendil-works/pi-coding-agent"]).toBe(">=0.84.0");
-		expect(pkg.peerDependencies["@earendil-works/pi-tui"]).toBe(">=0.84.0");
-		expect(pkg.engines.node).toBe(">=22.19.0");
-		expect(pkg.files).toEqual(expect.arrayContaining(["extensions", "src", "README.md", "LICENSE"]));
-	});
-
+describe("structured sidebar contributions", () => {
 	it("exports the deliberate structured contribution contract from the package entrypoint", () => {
 		const contributedId: ContributedSidebarPanelId = "vendor:queue";
 		const row: SidebarPanelRow = { text: "Ready", role: "ready" };

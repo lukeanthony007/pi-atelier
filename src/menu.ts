@@ -1,8 +1,5 @@
-import {
-	getSettingsListTheme,
-	type ExtensionAPI,
-	type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { getSelectListTheme, getSettingsListTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/tui-adapters";
 import {
 	Container,
 	type SelectItem,
@@ -12,7 +9,7 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@oh-my-pi/pi-tui";
 import { saveUserConfigPatch } from "./config.js";
 import {
 	DISPLAY_SETTINGS_OVERLAY_MARGIN,
@@ -113,7 +110,7 @@ export function createMenuActions(
 			} catch (error) {
 				if (!isActive()) return;
 				try {
-					pi.setThinkingLevel(previous);
+					if (previous !== undefined) pi.setThinkingLevel(previous);
 				} catch {}
 				notify(
 					`Could not change thinking level: ${error instanceof Error ? error.message : String(error)}`,
@@ -203,6 +200,7 @@ async function showSelection(
 			const container = new Container();
 			container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
 			const list = new SelectList(items, Math.min(items.length, 12), {
+				...getSelectListTheme(),
 				selectedPrefix: (text) => theme.fg("accent", text),
 				selectedText: (text) => theme.fg("accent", text),
 				description: (text) => theme.fg("muted", text),
@@ -214,7 +212,7 @@ async function showSelection(
 			container.addChild(list);
 			container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc back"), 1, 0));
 			return {
-				render: (width) => renderMenuFrame(theme, container.render(Math.max(1, width - 2)), width),
+				render: (width) => renderMenuFrame(theme, [...container.render(Math.max(1, width - 2))], width),
 				invalidate: () => container.invalidate(),
 				handleInput: (data) => {
 					list.handleInput(data);
@@ -258,10 +256,10 @@ async function showToolSettings(
 					setTools([...enabled]);
 				},
 				finish,
-				{ enableSearch: true },
+				{ typeToSearch: true },
 			);
 			return {
-				render: (width) => list.render(width),
+				render: (width) => [...list.render(width)],
 				invalidate: () => list.invalidate(),
 				handleInput: (data) => {
 					list.handleInput(data);

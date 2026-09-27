@@ -47,7 +47,7 @@ function createRuntime(
 	};
 	const runtime = disposeAfterTest(
 		new AtelierRuntime({
-			pi: {} as never,
+			pi: { getThinkingLevel: () => "medium" } as never,
 			ctx: ctx as never,
 			config: DEFAULT_CONFIG,
 			autoCompact: true,
@@ -242,7 +242,7 @@ describe("AtelierRuntime", () => {
 		const requestRender = vi.fn();
 		const runtime = disposeAfterTest(
 			new AtelierRuntime({
-				pi: { exec: vi.fn() } as never,
+				pi: { exec: vi.fn(), getThinkingLevel: () => "medium" } as never,
 				ctx: {
 					modelRegistry: { isUsingOAuth: vi.fn() },
 					getContextUsage: vi.fn(),
@@ -294,7 +294,7 @@ describe("AtelierRuntime", () => {
 		const requestRender = vi.fn();
 		const runtime = disposeAfterTest(
 			new AtelierRuntime({
-				pi: { exec: vi.fn() } as never,
+				pi: { exec: vi.fn(), getThinkingLevel: () => "medium" } as never,
 				ctx: {
 					modelRegistry: { isUsingOAuth: vi.fn() },
 					getContextUsage: vi.fn(),

@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { selectWorkingPhrase } from "./activity.js";
 import { resolveDisplayLayers } from "./config.js";
 import { aggregateMetrics, type UsageMessage } from "./metrics.js";
@@ -315,11 +315,17 @@ export class AtelierRuntime {
 		const model = this.#ctx.model;
 		const context = this.#ctx.getContextUsage();
 		const subscription = model ? this.#ctx.modelRegistry.isUsingOAuth(model) : false;
-		const { modelId: _modelId, provider: _provider, ...stateWithoutModel } = this.#state;
+		const {
+			modelId: _modelId,
+			provider: _provider,
+			thinkingLevel: _thinkingLevel,
+			...stateWithoutModel
+		} = this.#state;
+		const thinkingLevel = this.#pi.getThinkingLevel();
 		this.#state = {
 			...stateWithoutModel,
 			...(model ? { modelId: model.id, provider: model.provider } : {}),
-			thinkingLevel: this.#pi.getThinkingLevel?.(),
+			...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
 			metrics: aggregateMetrics(messages, {
 				subscription,
 				autoCompact: this.#autoCompact,

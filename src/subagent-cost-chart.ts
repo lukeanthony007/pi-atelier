@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { Ellipsis, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import { interpolateCostCurve, renderCostImage, type ChartRgb } from "./subagent-cost-image.js";
 import type { AtelierPalette, PaletteRole } from "./palette.js";
 import type { SubagentUsageSnapshot } from "./subagent-usage.js";
@@ -166,7 +166,7 @@ export function subagentCostChart(
 		if (options.suspendPlot) {
 			rows.push(
 				y === Math.floor(height / 2)
-					? palette.paint("dim", truncateToWidth("Close dialog to view graph", width, "…"))
+					? palette.paint("dim", truncateToWidth("Close dialog to view graph", width, Ellipsis.Unicode))
 					: "",
 			);
 			continue;
@@ -221,7 +221,11 @@ export function subagentCostChart(
 	const start = page * pageSize;
 	const cellWidth = Math.floor((width - (legendColumns - 1) * 2) / legendColumns);
 	const legend = selected.slice(start, start + pageSize).map(({ series, index }) => {
-		const name = truncateToWidth(clean(`#${index + 1} ${series.agent}`), Math.max(1, cellWidth - 2), "…");
+		const name = truncateToWidth(
+			clean(`#${index + 1} ${series.agent}`),
+			Math.max(1, cellWidth - 2),
+			Ellipsis.Unicode,
+		);
 		const text = `${unicode ? "━" : "-"} ${name}`;
 		return paintFocused(index, series.id, text) + " ".repeat(Math.max(0, cellWidth - visibleWidth(text)));
 	});

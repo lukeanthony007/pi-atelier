@@ -1,5 +1,5 @@
 import { deflateSync } from "node:zlib";
-import { allocateImageId, getCapabilities, getCellDimensions, Image } from "@earendil-works/pi-tui";
+import { getCellDimensions, Image, ImageProtocol, TERMINAL } from "@oh-my-pi/pi-tui";
 import type { SubagentCostSeries } from "./subagent-cost-history.js";
 
 export type ChartRgb = readonly [number, number, number];
@@ -180,7 +180,7 @@ export function drawCostPlot(
 	]);
 }
 
-const cache = new WeakMap<object, { imageId: number; signature: string; lines: string[] }>();
+const cache = new WeakMap<object, { signature: string; lines: string[] }>();
 export function renderCostImage(
 	owner: object,
 	series: readonly CostImageSeries[],
@@ -188,7 +188,7 @@ export function renderCostImage(
 	rows: number,
 ): string[] | undefined {
 	// Kitty supports reliable placement replacement/deletion during overlay changes.
-	if (getCapabilities().images !== "kitty") return undefined;
+	if (TERMINAL.imageProtocol !== ImageProtocol.Kitty) return undefined;
 	const cell = getCellDimensions();
 	const scale = Math.min(2, 1400 / (columns * cell.widthPx), 800 / (rows * cell.heightPx));
 	const width = Math.max(40, Math.round(columns * cell.widthPx * scale));
@@ -202,16 +202,15 @@ export function renderCostImage(
 	]);
 	const previous = cache.get(owner);
 	if (previous?.signature === signature) return previous.lines;
-	const imageId = previous?.imageId ?? allocateImageId();
 	const png = drawCostPlot(series, width, height, scale);
 	const image = new Image(
 		png.toString("base64"),
 		"image/png",
 		{ fallbackColor: (text) => text },
-		{ maxWidthCells: columns, maxHeightCells: rows, imageId },
+		{ maxWidthCells: columns, maxHeightCells: rows },
 		{ widthPx: width, heightPx: height },
 	);
-	const lines = image.render(columns + 2);
-	cache.set(owner, { imageId, signature, lines });
+	const lines = [...image.render(columns + 2)];
+	cache.set(owner, { signature, lines });
 	return lines;
 }

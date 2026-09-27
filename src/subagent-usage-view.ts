@@ -1,5 +1,5 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { Ellipsis, matchesKey, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import { openLifecycleOverlay, type OverlayLifetime } from "./overlay-lifecycle.js";
 import { createPalette } from "./palette.js";
 import { costLegendColumns, subagentCostChart } from "./subagent-cost-chart.js";
@@ -28,7 +28,7 @@ export async function openSubagentUsage(
 					const contentWidth = outerWidth - 4;
 					const border = (text: string) => theme.fg("borderAccent", text);
 					const framed = (text: string): string => {
-						const content = truncateToWidth(text, contentWidth, "…");
+						const content = truncateToWidth(text, contentWidth, Ellipsis.Unicode);
 						return `${border("│")} ${content}${" ".repeat(Math.max(0, contentWidth - visibleWidth(content)))} ${border("│")}`;
 					};
 					const pageSize = Math.max(1, height - 5);

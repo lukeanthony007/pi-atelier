@@ -6,7 +6,7 @@ import {
 	start,
 	todoBranchEntry,
 	command,
-	renderOverlayText,
+	renderSidebarText,
 	withPersistedUserConfig,
 } from "./helpers/extension.js";
 
@@ -73,8 +73,8 @@ describe("tool_result handler for todos", () => {
 
 		await command(h, "sidebar off");
 		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
-		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
+		expect(h.activeSidebar).toBeDefined();
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("Initial task");
 		expect(sidebarText).not.toContain("Failed task");
 	});
@@ -124,7 +124,7 @@ describe("sidebar todos integration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		const sidebarText = renderOverlayText(h);
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("TODOS");
 		expect(sidebarText).toContain(progress);
 		for (const text of texts) expect(sidebarText).toContain(text);
@@ -139,8 +139,8 @@ describe("sidebar todos integration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		expect(h.overlays[0]).toBeDefined();
-		const sidebarText = renderOverlayText(h, 0, 44);
+		expect(h.activeSidebar).toBeDefined();
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("Successful task");
 		expect(sidebarText).not.toContain("Failed task");
 	});
@@ -152,24 +152,23 @@ describe("sidebar todos integration", () => {
 		]);
 		await start(h);
 		await command(h, "sidebar on");
-		expect(h.overlays[0]).toBeDefined();
-		const sidebarOverlay = h.overlays[0]!;
-		expect(sidebarOverlay.component.render(44).join("\n")).toContain("First branch task");
+		expect(h.activeSidebar).toBeDefined();
+		expect(renderSidebarText(h)).toContain("First branch task");
 
 		h.ctx.sessionManager.getBranch.mockReturnValue([
 			todoBranchEntry({ tasks: [{ id: 2, subject: "Second branch task", status: "pending" }], nextId: 3 }),
 		]);
 		const sessionTreeHandler = h.handler("session_tree");
-		const previousRenderCount = sidebarOverlay.requestRender.mock.calls.length;
+		const previousRenderCount = h.sidebarRequestRender.mock.calls.length;
 		await sessionTreeHandler({ type: "session_tree", newLeafId: "second", oldLeafId: "first" }, h.ctx);
-		expect(sidebarOverlay.requestRender.mock.calls.length).toBeGreaterThan(previousRenderCount);
-		let sidebarText = sidebarOverlay.component.render(44).join("\n");
+		expect(h.sidebarRequestRender.mock.calls.length).toBeGreaterThan(previousRenderCount);
+		let sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("Second branch task");
 		expect(sidebarText).not.toContain("First branch task");
 
 		h.ctx.sessionManager.getBranch.mockReturnValue([]);
 		await sessionTreeHandler({ type: "session_tree", newLeafId: null, oldLeafId: "second" }, h.ctx);
-		sidebarText = sidebarOverlay.component.render(44).join("\n");
+		sidebarText = renderSidebarText(h);
 		expect(sidebarText).not.toContain("Second branch task");
 		expect(sidebarText).not.toContain("TODOS");
 	});
@@ -189,7 +188,7 @@ describe("sidebar todos integration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		const sidebarText = renderOverlayText(h, 0, 44);
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("TODOS");
 		expect(sidebarText).toContain("0/1");
 		expect(sidebarText).toContain("Valid");
@@ -208,7 +207,7 @@ describe("sidebar todos integration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		let sidebarText = renderOverlayText(h, 0, 44);
+		let sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("0/1");
 		expect(sidebarText).toContain("Initial task");
 
@@ -228,7 +227,7 @@ describe("sidebar todos integration", () => {
 			h.ctx,
 		);
 
-		sidebarText = renderOverlayText(h, 0, 44);
+		sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("1/2");
 		expect(sidebarText).toContain("Initial task");
 		expect(sidebarText).toContain("New task");
@@ -253,8 +252,8 @@ describe("sidebar todos integration", () => {
 		expect(result).toBeUndefined();
 
 		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
-		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
+		expect(h.activeSidebar).toBeDefined();
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).toContain("Hidden update");
 		expect(sidebarText).not.toContain("Initial task");
 	});
@@ -279,8 +278,8 @@ describe("sidebar todos integration", () => {
 
 		await command(h, "sidebar off");
 		await command(h, "sidebar on");
-		expect(h.overlays.at(-1)).toBeDefined();
-		const sidebarText = renderOverlayText(h, h.overlays.length - 1, 44);
+		expect(h.activeSidebar).toBeDefined();
+		const sidebarText = renderSidebarText(h);
 		expect(sidebarText).not.toContain("Stale task");
 		expect(sidebarText).not.toContain("TODOS");
 	});
@@ -299,17 +298,17 @@ describe("sidebar todos integration", () => {
 			]);
 
 			await start(h);
-			expect(h.overlays[0]).toBeDefined();
-			const initialSidebar = renderOverlayText(h, 0, 44);
+			expect(h.activeSidebar).toBeDefined();
+			const initialSidebar = renderSidebarText(h);
 			expect(initialSidebar).not.toContain("AGENT");
 			expect(initialSidebar).toContain("TODOS");
 			expect(initialSidebar).toContain("1/2");
 			expect(initialSidebar).toContain("Visible TODO");
 
 			await start(h, replacementContext(h.ctx, "Reloaded session"));
-			expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
-			expect(h.overlays[1]).toBeDefined();
-			const reloadedSidebar = renderOverlayText(h, 1, 44);
+			expect(h.setSidebar).toHaveBeenCalledWith(undefined);
+			expect(h.activeSidebar).toBeDefined();
+			const reloadedSidebar = renderSidebarText(h);
 			expect(reloadedSidebar).not.toContain("AGENT");
 			expect(reloadedSidebar).toContain("TODOS");
 			expect(reloadedSidebar).toContain("1/2");
@@ -326,8 +325,8 @@ describe("sidebar todos integration", () => {
 			await start(h);
 			await command(h, "sidebar on");
 
-			expect(h.overlays[0]).toBeDefined();
-			const sidebarText = renderOverlayText(h, 0, 44);
+			expect(h.activeSidebar).toBeDefined();
+			const sidebarText = renderSidebarText(h);
 			expect(sidebarText).not.toContain("TODOS");
 
 			const toolResultHandler = h.handler("tool_result");

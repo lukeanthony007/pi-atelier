@@ -1,5 +1,8 @@
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import { stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { CustomEditor } from "@oh-my-pi/pi-coding-agent/modes/components/custom-editor";
+import { truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
+
+const stripTerminalSequences = (text: string): string =>
+	text.replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 
 /** │ + padding on each side. */
 export const EDITOR_FRAME_CHROME = 4;
@@ -106,7 +109,7 @@ export function frameEditorLines(
 	return framed.map((line) => truncateToWidth(line, safeWidth, ""));
 }
 
-/** Pi composer with Atelier's rounded frame. Preserves thinking-level borderColor. */
+/** OMP composer with Atelier's rounded frame. Preserves the thinking-level border color. */
 export class AtelierEditor extends CustomEditor {
 	/** Optional ANSI status content for the top frame; receives its available column width. */
 	renderStatusLine?: (width: number) => string;
@@ -120,7 +123,7 @@ export class AtelierEditor extends CustomEditor {
 	override render(width: number): string[] {
 		this.renderedStatusLine = false;
 		const safeWidth = Math.max(0, Math.trunc(width));
-		if (safeWidth < EDITOR_FRAME_MIN_WIDTH) return super.render(safeWidth);
+		if (safeWidth < EDITOR_FRAME_MIN_WIDTH) return [...super.render(safeWidth)];
 		const renderStatusLine = this.renderStatusLine;
 		return frameEditorLines(
 			super.render(safeWidth - EDITOR_FRAME_CHROME),

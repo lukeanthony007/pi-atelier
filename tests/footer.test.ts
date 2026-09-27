@@ -1,6 +1,6 @@
 import { plainTheme } from "./helpers/render.js";
 import { disposeAfterTest } from "./helpers/cleanup.js";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@oh-my-pi/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import { DISPLAY_TEMPLATES, legacySegmentsToLayout } from "../src/display.js";
 import { createFooterComponent, renderFooterLine } from "../src/footer.js";

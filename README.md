@@ -1,43 +1,29 @@
-# Pi Atelier
+# Pi Atelier for OMP
 
-[![npm version](https://img.shields.io/npm/v/pi-atelier)](https://www.npmjs.com/package/pi-atelier)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/michaelmjhhhh/pi-atelier/blob/main/LICENSE)
-[![Pi compatibility: 0.84.0 or newer](https://img.shields.io/badge/Pi-%3E%3D0.84.0-violet)](#requirements)
-
-Keep model, context, Git status, usage, and tool activity visible while you work in [Pi](https://pi.dev).
-
-Pi Atelier adds a responsive status rail to the composer and a live activity sidebar to your terminal.
+This fork brings Pi Atelier v0.12.0's live sidebar to [Oh My Pi (OMP)](https://omp.sh). It uses an OMP-owned full-height sidebar slot, preserving the main transcript, editor, modal overlays, and native scrollback.
 
 [Quick start](#quick-start) · [Features](#features) · [Use](#use) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
 
-[![Pi Atelier status rail and activity sidebar demo](https://raw.githubusercontent.com/michaelmjhhhh/pi-atelier/main/assets/demo.png?v=0.10.0)](https://github.com/michaelmjhhhh/pi-atelier/releases/download/v0.10.0/demo.mp4)
-
-[Watch the demo (v0.10.0)](https://github.com/michaelmjhhhh/pi-atelier/releases/download/v0.10.0/demo.mp4)
 
 ## Quick start
 
-Install the extension:
+This fork needs an OMP build with `ExtensionUIContext.setSidebar(factory, { width, minMainWidth })`. Stock OMP 18.3.5 lacks the slot. Run the companion OMP sidebar branch rather than replacing a newer OMP installation with an older build.
+
+From this fork's checkout, set `OMP_SOURCE` to the absolute path of the companion OMP checkout, then launch it with the extension:
 
 ```bash
-pi install npm:pi-atelier
+export OMP_SOURCE=/absolute/path/to/patched/omp
+npm ci
+bun "$OMP_SOURCE/packages/coding-agent/src/cli.ts" --no-extensions -e "$PWD/extensions/index.ts"
 ```
 
-Start Pi, then open the control center:
-
-```text
-/atelier
-```
-
-You can also press **F6** on macOS and Windows (**Fn+F6** on keyboards with media keys). If icons appear as boxes, select **Settings → Font mode → Plain text**. For icon setup, see [Terminal font](#terminal-font).
-
-Pi packages run with your system permissions. Review third-party source before installation.
+`OMP_SOURCE` must point to a built checkout of the companion OMP sidebar branch. OMP runs in interactive TUI mode; open `/atelier` or press **F6** to inspect the sidebar. Use `/atelier sidebar on|off` to toggle it and `Ctrl+Shift+R` to resize it.
 
 ### Requirements
 
-- Pi 0.84.0 or newer
-- Node.js 22.19.0 or newer
-- Interactive TUI mode
-- A monospace terminal font; use Plain text mode or select a Nerd Font for icons
+- OMP with the `setSidebar` extension UI API
+- Bun and a terminal at least 92 columns wide for the default sidebar
+- A monospace terminal font; Plain text mode works without a Nerd Font
 
 ### Terminal font
 
@@ -47,17 +33,17 @@ See the [font setup guide and Plain text preview](https://github.com/michaelmjhh
 
 ## Features
 
-- **Subagent costs:** colored per-child cost curves from pi-subagents accounting events, with matching legends and real observation markers. Open `/atelier` → **Subagent usage** (or `/atelier usage`) for a framed, larger graph, keyboard focus and individual reply costs. Kitty-compatible terminals display smooth native graphics; other terminals use text strokes.
-- **Session visibility:** model, thinking level, context, token usage, cost, and session details in a compact status rail and sidebar.
-- **Live activity:** agent and tool activity, TODOs, response timing, and completion notifications on macOS and Windows.
-- **Workspace context:** workspace identity and read-only Git status alongside your session.
-- **Personalization:** display presets, configurable segments and panels, optional Nerd Font icons, and model and tool controls.
+- **Live sidebar:** model, thinking level, context, usage, tool and agent activity, workspace status, TODOs, and optional subagent cost charts.
+- **Controls:** `/atelier` menu, sidebar toggle, keyboard or mouse resize, sidebar panels and font settings.
+- **Responsive layout:** hides the pane when the main view would be narrower than 64 columns.
+
+OMP's built-in status line remains the live status rail. This fork does not replace OMP's footer; display presets for Atelier's original Pi footer affect its preview only. Graphics in the sidebar use text rendering on this OMP port.
 
 No telemetry or external network requests. See [Privacy](#privacy).
 
 ## Use
 
-Open `/atelier` or press **F6** to change display settings, control the sidebar, select models and tools, rename the session, or compact it.
+Open `/atelier` or press **F6** for sidebar controls, model and tool selection, or session actions.
 
 ```text
 /atelier display            # display settings
@@ -67,32 +53,20 @@ Open `/atelier` or press **F6** to change display settings, control the sidebar,
 /atelier enable|disable     # set extension state
 ```
 
-The sidebar starts visible and hides when the terminal is too narrow. Press `Ctrl+Shift+R` to resize it. Its TODO panel supports Pi `todo` results and the optional `@juicesharp/rpiv-todo` extension.
-
-Choose a status rail preset in the display settings:
-
-| Preset | Layout |
-| --- | --- |
-| **editorial** | Default layout |
-| **minimal** | Compact layout |
-| **classic** | Detailed telemetry |
-
-Pi supports one custom footer and one custom editor at a time. Extension load order determines which chrome is visible.
-
-See the [usage guide](https://github.com/michaelmjhhhh/pi-atelier/blob/main/docs/usage.md) for responsive layout, selection and copy, inline images, and disable/re-enable behavior.
+The sidebar starts visible and hides when the terminal is too narrow. Press `Ctrl+Shift+R` to resize it. Its TODO panel reads OMP `todo` results.
 
 ## Configuration
 
 User configuration:
 
 ```text
-~/.pi/agent/pi-atelier.json
+~/.omp/agent/pi-atelier.json
 ```
 
 Trusted project configuration:
 
 ```text
-<project>/.pi/pi-atelier.json
+<project>/.omp/pi-atelier.json
 ```
 
 Project settings override user settings. Session changes override both. Global font mode, sidebar startup, and notification preferences remain user-only.
@@ -111,12 +85,12 @@ Project settings override user settings. Session changes override both. Global f
 }
 ```
 
-Use **Settings → Display** to reorder or hide status rail segments and sidebar panels. Undo restores the latest Display or Sidebar edit, including a Display Revert. Legacy user settings `showSidebarAgent` and `showSidebarTodos` remain supported when `sidebarPanelLayout` is absent.
+Use **Settings → Display** to reorder sidebar panels. OMP owns the footer shown beneath the editor; configure it with OMP's `statusLine` settings.
 
 ## Troubleshooting
 
 - Shortcut unavailable: use `/atelier`, change `shortcut`, then run `/reload`. The default is `f6` on both macOS and Windows; keyboards with media keys may require Fn+F6 on either platform. Saved `alt+a` settings now resolve to `f6`; Alt+A is no longer registered. Other custom `shortcut` settings add an alternative binding alongside F6. Other extensions or terminal key mappings can still intercept F6.
-- Status rail missing: use TUI mode and check for another custom footer.
+- Status line missing: inspect OMP `statusLine` settings; Atelier's Pi footer is not mounted in this port.
 - Missing icon glyphs: choose **Settings → Font mode: Plain text**, or select a Nerd Font in your terminal settings.
 - Metric mismatch: token and cost totals cover the session; context usage covers the current model context.
 
@@ -135,16 +109,13 @@ Pi Atelier:
 ## Development
 
 ```bash
-git clone https://github.com/michaelmjhhhh/pi-atelier.git
+git clone https://github.com/lukeanthony007/pi-atelier.git
 cd pi-atelier
-npm install
+npm ci
 npm run check
-./node_modules/.bin/pi --no-session --no-extensions -e ./extensions/index.ts
+bun "$OMP_SOURCE/packages/coding-agent/src/cli.ts" --no-extensions -e "$PWD/extensions/index.ts"
 ```
 
-See [CONTRIBUTING.md](https://github.com/michaelmjhhhh/pi-atelier/blob/main/CONTRIBUTING.md).
-
-The command above opens a temporary session with only the checkout's extension loaded, avoiding conflicts with an installed copy.
 
 ## License
 

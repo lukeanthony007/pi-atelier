@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, Ellipsis, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import { formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
 import { responsePerformanceValues } from "./run-activity.js";
@@ -236,7 +236,7 @@ function buildItems(
 					full: rendered,
 					compact: icon(
 						symbols.model,
-						palette.paint("accent", theme.bold(truncateToWidth(model, 24, "…"))),
+						palette.paint("accent", theme.bold(truncateToWidth(model, 24, Ellipsis.Unicode))),
 						"accent",
 					),
 					dropRank: DROP.model,
@@ -268,7 +268,7 @@ function buildItems(
 					full: icon(symbols.workspace, palette.paint("cache", workspace), "cache"),
 					compact: icon(
 						symbols.workspace,
-						palette.paint("cache", truncateToWidth(workspace, 18, "…")),
+						palette.paint("cache", truncateToWidth(workspace, 18, Ellipsis.Unicode)),
 						"cache",
 					),
 					dropRank: DROP.workspace,
@@ -288,7 +288,7 @@ function buildItems(
 					full: rendered,
 					compact: icon(
 						symbols.git,
-						`${palette.paint("input", truncateToWidth(branch, 18, "…"))}${state.dirty ? palette.paint("warning", "*") : ""}`,
+						`${palette.paint("input", truncateToWidth(branch, 18, Ellipsis.Unicode))}${state.dirty ? palette.paint("warning", "*") : ""}`,
 						"input",
 					),
 					dropRank: DROP.git,
@@ -568,7 +568,7 @@ export interface FooterComponentOptions {
 	getConfig(): AtelierConfig;
 	colorEnabled?: boolean;
 	requestRender(): void;
-	onBranchChange(callback: () => void): () => void;
+	onBranchChange?(callback: () => void): () => void;
 	theme: ThemeLike;
 }
 
@@ -582,7 +582,7 @@ export function createFooterComponent(options: FooterComponentOptions): AtelierF
 	let disposed = false;
 	let frameIndex = 0;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
-	const unsubscribe = options.onBranchChange(options.requestRender);
+	const unsubscribe = options.onBranchChange?.(options.requestRender);
 
 	const stopAnimation = (): void => {
 		if (animationTimer) {
@@ -639,7 +639,7 @@ export function createFooterComponent(options: FooterComponentOptions): AtelierF
 			if (disposed) return;
 			disposed = true;
 			stopAnimation();
-			unsubscribe();
+			unsubscribe?.();
 		},
 	};
 }

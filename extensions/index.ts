@@ -1,13 +1,9 @@
 import { basename, join } from "node:path";
-import {
-	CONFIG_DIR_NAME,
-	type ExtensionAPI,
-	type ExtensionContext,
-	estimateTokens,
-	getAgentDir,
-	SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import type { KeyId } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { CONFIG_DIR_NAME, getAgentDir } from "@oh-my-pi/pi-utils/dirs";
+import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
+import type { KeyId } from "@oh-my-pi/pi-tui";
 import {
 	type CompletionNotification,
 	type CompletionNotifier,
@@ -17,7 +13,7 @@ import {
 import { loadConfig, saveUserConfigPatch } from "../src/config.js";
 import { AtelierEditor } from "../src/editor.js";
 import { type AtelierFooterComponent, createFooterComponent, type ThemeLike } from "../src/footer.js";
-import { createImageCompositorBinding } from "../src/image-compositor.js";
+
 import {
 	type DisplaySettingsRuntime,
 	type OverlayLifetime,
@@ -50,6 +46,7 @@ import type {
 	RpivTask,
 	TodoItem,
 } from "../src/types.js";
+const tokenizer = new Tokenizer();
 
 export type {
 	SidebarPanelContribution,
@@ -562,7 +559,7 @@ export default function atelierExtension(
 				? current
 				: undefined;
 		};
-		ctx.ui.setFooter((tui, theme, footerData) => {
+		ctx.ui.setFooter((tui, theme) => {
 			const footerRequestRender = (): void => {
 				if (getCurrentSession()) tui.requestRender();
 			};
@@ -573,8 +570,8 @@ export default function atelierExtension(
 					// A footer outliving its `setFooter(undefined)` reports detached inert state.
 					const currentSession = getCurrentSession();
 					if (!currentSession) return retiredState;
-					const branch = footerData.getGitBranch();
-					updateExtensionStatuses(currentSession, Array.from(footerData.getExtensionStatuses().values()));
+					const pulse = currentSession.runtime.getState().workspacePulse;
+					const branch = "data" in pulse ? pulse.data.branch : undefined;
 					const performance = currentSession.runActivity.getSnapshot().performance;
 					return {
 						...currentSession.runtime.getState(),
@@ -587,20 +584,11 @@ export default function atelierExtension(
 				getConfig: () => getCurrentSession()?.runtime.getConfig() ?? retiredConfig,
 				colorEnabled: !("NO_COLOR" in process.env),
 				requestRender: footerRequestRender,
-				onBranchChange: (callback) =>
-					footerData.onBranchChange(() => {
-						const currentSession = getCurrentSession();
-						if (!currentSession) return;
-						void currentSession.runtime.flushWorkspacePulseRefresh();
-						callback();
-					}),
 				theme: theme as unknown as ThemeLike,
 			});
 			footer = component;
-			const imageCompositor = createImageCompositorBinding(tui);
 			const renderFooter = component.render;
 			component.render = (width) => {
-				imageCompositor.sync();
 				// Selectors can temporarily replace the editor without disposing it.
 				const promptVisible = editorInstalled && headerRendered && editor?.statusLineVisible;
 				headerRendered = false;
@@ -608,14 +596,10 @@ export default function atelierExtension(
 			};
 			const disposeFooter = component.dispose;
 			component.dispose = () => {
-				try {
-					if (editor) delete editor.renderStatusLine;
-					editor = undefined;
-					editorInstalled = false;
-					disposeFooter();
-				} finally {
-					imageCompositor.dispose();
-				}
+				if (editor) delete editor.renderStatusLine;
+				editor = undefined;
+				editorInstalled = false;
+				disposeFooter();
 			};
 			const mounted = getCurrentSession();
 			if (mounted) mounted.footerDisposer = component.dispose;
@@ -623,8 +607,8 @@ export default function atelierExtension(
 			return component;
 		});
 		try {
-			ctx.ui.setEditorComponent((tui, theme, keybindings) => {
-				const next = new AtelierEditor(tui, theme, keybindings);
+			ctx.ui.setEditorComponent((tui, theme) => {
+				const next = new AtelierEditor(theme);
 				next.renderStatusLine = (width) => {
 					// Fullscreen Pi crops the top of a tall draft after editor rendering.
 					// Keep essential state in the bottom footer on short terminals.
@@ -780,17 +764,7 @@ export default function atelierExtension(
 			});
 			if (!isFresh()) return;
 			for (const warning of loaded.warnings) initializationContext.ui.notify(warning, "warning");
-			let autoCompact: boolean | null = null;
-			try {
-				autoCompact = SettingsManager.create(
-					initializationContext.isProjectTrusted() ? initializationContext.cwd : getAgentDir(),
-				).getCompactionSettings().enabled;
-			} catch {
-				initializationContext.ui.notify(
-					"Could not read Pi compaction settings; compaction mode is unavailable",
-					"warning",
-				);
-			}
+			const autoCompact: boolean | null = settings.get("compaction.enabled");
 			const candidateRuntime = new AtelierRuntime({
 				pi,
 				ctx: initializationContext,
@@ -1009,7 +983,7 @@ export default function atelierExtension(
 	pi.on("message_update", (event, ctx) => {
 		const current = getActiveSession(ctx);
 		if (!enabled || !current) return;
-		const estimatedOutputTokens = estimateTokens(event.message);
+		const estimatedOutputTokens = tokenizer.countMessage(event.message);
 		if (estimatedOutputTokens <= 0) return;
 		current.runActivity.updateResponseEstimate(estimatedOutputTokens);
 	});
@@ -1051,9 +1025,9 @@ export default function atelierExtension(
 			content: [{ type: "text", text: `${done}/${todoList.length} done · see sidebar` }],
 		};
 	});
-	pi.on("agent_settled", (_event, ctx) => {
+	pi.on("agent_end", (event, ctx) => {
 		const current = getActiveSession(ctx);
-		if (!current || !ctx.isIdle()) return;
+		if (!current || event.willContinue || !ctx.isIdle()) return;
 		current.runActivity.settle();
 		current.runtime.setActivity("ready");
 		if (!enabled) return;
@@ -1069,10 +1043,7 @@ export default function atelierExtension(
 		current.runtime.refreshUsage();
 		await current.runtime.flushWorkspacePulseRefresh();
 	});
-	pi.on("model_select", (_event, ctx) => getActiveSession(ctx)?.runtime.refreshUsage());
-	pi.on("thinking_level_select", (_event, ctx) => getActiveSession(ctx)?.runtime.refreshUsage());
 	pi.on("session_compact", (_event, ctx) => getActiveSession(ctx)?.runtime.refreshUsage());
-	pi.on("session_info_changed", (_event, ctx) => getActiveSession(ctx)?.runtime.refreshUsage());
 	pi.on("session_shutdown", (_event, ctx) => {
 		const current = getActiveSession(ctx);
 		const initializing = initializingSessionManager;

@@ -5,7 +5,9 @@ if (result.status !== 0) {
 	process.stderr.write(result.stderr);
 	process.exit(result.status ?? 1);
 }
-const report = JSON.parse(result.stdout)[0];
+const payload = JSON.parse(result.stdout);
+const report = Array.isArray(payload) ? payload[0] : Object.values(payload)[0];
+if (!report || !Array.isArray(report.files)) throw new Error("npm pack returned no file list");
 const names = report.files.map((file) => file.path);
 const required = [
 	"extensions/index.ts",

@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { type Component, type OverlayHandle, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionUiComponentFactory } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/types";
+import { type Component, Ellipsis, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
 import type { ThemeLike } from "./footer.js";
-import { hasCapturingOverlay } from "./image-compositor.js";
 import { aggregateMetrics, formatTokens } from "./metrics.js";
 import { type AtelierPalette, createPalette, type PaletteRole } from "./palette.js";
 import {
@@ -235,8 +235,8 @@ function labeledRow(
 	role: PaletteRole = "primary",
 ): string {
 	const safeWidth = Math.max(0, Math.trunc(width));
-	const left = truncateToWidth(label, Math.min(12, Math.max(0, safeWidth - 8)), "…");
-	const right = truncateToWidth(value, Math.max(0, safeWidth - visibleWidth(left) - 1), "…");
+	const left = truncateToWidth(label, Math.min(12, Math.max(0, safeWidth - 8)), Ellipsis.Unicode);
+	const right = truncateToWidth(value, Math.max(0, safeWidth - visibleWidth(left) - 1), Ellipsis.Unicode);
 	return truncateToWidth(
 		`${palette.paint("muted", left)}${" ".repeat(Math.max(1, safeWidth - visibleWidth(left) - visibleWidth(right)))}${palette.paint(role, right)}`,
 		safeWidth,
@@ -1225,45 +1225,30 @@ function createRetirableSidebarBinding(options: SidebarControllerOptions): Retir
 	};
 }
 
+/** OMP's live TUI sidebar slot; the installed package's declaration predates its host implementation. */
+type SidebarUI = ExtensionContext["ui"] & {
+	setSidebar(
+		factory: ExtensionUiComponentFactory | undefined,
+		options?: { width?: number; minMainWidth?: number },
+	): void;
+};
+
 export function createSidebarController(options: SidebarControllerOptions): SidebarController {
+	const ui = options.ctx.ui as SidebarUI;
 	const binding = createRetirableSidebarBinding(options);
 	let enabled = false;
 	let disposed = false;
-	let generation = 0;
-	let closeOverlay: (() => void) | undefined;
-	let restoreStoppedCursor: (() => void) | undefined;
-	let requestOverlayRender: (() => void) | undefined;
-	let overlayHandle: OverlayHandle | undefined;
+	let renderSidebar: (() => void) | undefined;
 	let animationTimer: ReturnType<typeof setInterval> | undefined;
 	const animationIntervalMs = Math.max(1, Math.trunc(options.animationIntervalMs ?? 1_000));
-
-	const reportError = (error: unknown) => {
-		try {
-			options.onError?.(error);
-		} catch {
-			// External error reporting must not interrupt lifecycle cleanup.
-		}
-	};
-
-	const safely = (action: () => unknown): boolean => {
-		try {
-			action();
-			return true;
-		} catch (error) {
-			reportError(error);
-			return false;
-		}
-	};
-
-	const split: SplitPaneController = createSplitPaneController({
+	const split = createSplitPaneController({
 		subscribeInput: (handler) => options.ctx.ui.onTerminalInput(handler),
-		onResizeChange: () => {
-			safely(() => requestOverlayRender?.());
+		onWidthChange: (width) => {
+			if (enabled) ui.setSidebar(sidebarFactory, { width, minMainWidth: 64 });
 		},
 		...(options.onWarning ? { onWarning: options.onWarning } : {}),
 		...(options.onError ? { onError: options.onError } : {}),
 	});
-
 	binding.setResizing(split.isResizing);
 
 	const stopAnimation = () => {
@@ -1271,135 +1256,57 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 		clearInterval(animationTimer);
 		animationTimer = undefined;
 	};
-
 	const syncAnimation = () => {
-		if (!enabled || options.shouldAnimate?.() !== true || !requestOverlayRender) {
+		if (!enabled || options.shouldAnimate?.() !== true || !renderSidebar) {
 			stopAnimation();
 			return;
 		}
 		if (animationTimer) return;
-		animationTimer = setInterval(() => {
-			safely(() => requestOverlayRender?.());
-		}, animationIntervalMs);
+		animationTimer = setInterval(() => renderSidebar?.(), animationIntervalMs);
 		animationTimer.unref?.();
 	};
-
-	const clearOverlayCallbacks = () => {
-		closeOverlay = undefined;
-		restoreStoppedCursor = undefined;
-		requestOverlayRender = undefined;
-		overlayHandle = undefined;
+	const sidebarFactory: Parameters<SidebarUI["setSidebar"]>[0] = (tui, theme) => {
+		split.attach(tui);
+		renderSidebar = () => tui.requestRender();
+		syncAnimation();
+		return createSidebarComponent({
+			getSnapshot: binding.getSnapshot,
+			getConfig: binding.getConfig,
+			getHeight: () => tui.terminal.rows,
+			isResizing: binding.isResizing,
+			canRenderImages: () => false,
+			theme: theme as ThemeLike,
+			...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
+		});
 	};
-
 	const hide = () => {
-		if (!enabled && !closeOverlay && !overlayHandle && !split.isEnabled()) return;
+		if (!enabled) return;
 		enabled = false;
-		generation += 1;
 		stopAnimation();
-		safely(split.cancelResize);
-		const close = closeOverlay;
-		const handle = overlayHandle;
-		const restoreCursor = restoreStoppedCursor;
-		clearOverlayCallbacks();
-		if (close) safely(close);
-		else if (handle) safely(() => handle.hide());
-		safely(split.hide);
-		if (restoreCursor) safely(restoreCursor);
+		split.hide();
+		renderSidebar = undefined;
+		try {
+			ui.setSidebar(undefined);
+		} catch (error) {
+			options.onError?.(error);
+		}
 	};
-
 	const show = () => {
 		if (disposed || enabled) return;
 		if (options.ctx.mode !== "tui") {
-			reportError(new Error("Pi Atelier sidebar requires TUI mode"));
-			return;
-		}
-
-		enabled = true;
-		const currentGeneration = ++generation;
-		if (!safely(split.show)) {
-			enabled = false;
-			stopAnimation();
-			clearOverlayCallbacks();
-			safely(split.hide);
+			options.onWarning?.("Pi Atelier sidebar requires TUI mode");
 			return;
 		}
 		try {
-			const pending = options.ctx.ui.custom<void>(
-				(tui, theme, _keybindings, done) => {
-					let closed = false;
-					const close = () => {
-						if (closed) return;
-						closed = true;
-						done(undefined);
-					};
-					if (!safely(() => split.attach(tui))) {
-						enabled = false;
-						generation += 1;
-						stopAnimation();
-						clearOverlayCallbacks();
-						safely(split.hide);
-						safely(close);
-					} else {
-						if (enabled && generation === currentGeneration) {
-							closeOverlay = close;
-							restoreStoppedCursor = () => {
-								// Pi can close overlays after stop() restored the terminal (#72).
-								// The internal flag is optional; never change the cursor of a live TUI.
-								if ((tui as unknown as { stopped?: boolean }).stopped === true) {
-									tui.terminal.showCursor();
-								}
-							};
-							requestOverlayRender = () => tui.requestRender();
-							syncAnimation();
-						} else {
-							close();
-						}
-					}
-					return createSidebarComponent({
-						getSnapshot: binding.getSnapshot,
-						getConfig: binding.getConfig,
-						getHeight: () => tui.terminal.rows,
-						isResizing: binding.isResizing,
-						canRenderImages: () => !hasCapturingOverlay(tui),
-						theme: theme as unknown as ThemeLike,
-						...(options.colorEnabled === undefined ? {} : { colorEnabled: options.colorEnabled }),
-					});
-				},
-				{
-					overlay: true,
-					overlayOptions: () => split.overlayOptions(),
-					onHandle: (handle) => {
-						if (enabled && generation === currentGeneration) {
-							overlayHandle = handle;
-							syncAnimation();
-						} else {
-							safely(() => handle.hide());
-						}
-					},
-				},
-			);
-			void pending
-				.catch((error: unknown) => {
-					reportError(error);
-				})
-				.finally(() => {
-					if (generation !== currentGeneration) return;
-					enabled = false;
-					stopAnimation();
-					clearOverlayCallbacks();
-					safely(split.hide);
-				});
+			ui.setSidebar(sidebarFactory, { width: split.getSidebarWidth(), minMainWidth: 64 });
+			enabled = true;
+			split.show();
+			syncAnimation();
 		} catch (error) {
-			if (generation === currentGeneration) {
-				enabled = false;
-				stopAnimation();
-				clearOverlayCallbacks();
-				safely(split.hide);
-			}
-			reportError(error);
+			renderSidebar = undefined;
+			options.onError?.(error);
 		}
 	};
-
 	return {
 		show,
 		hide,
@@ -1407,23 +1314,22 @@ export function createSidebarController(options: SidebarControllerOptions): Side
 			if (enabled) hide();
 			else show();
 		},
-		isVisible() {
-			return enabled;
-		},
+		isVisible: () => enabled,
 		beginResize: split.beginResize,
 		isResizing: split.isResizing,
 		getWidth: split.getSidebarWidth,
 		requestRender() {
-			// Still refresh the overlay if adapter reconciliation fails.
-			if (!safely(split.requestRender)) safely(() => requestOverlayRender?.());
-			syncAnimation();
+			if (enabled) {
+				renderSidebar?.();
+				syncAnimation();
+			}
 		},
 		dispose() {
 			if (disposed) return;
 			disposed = true;
 			hide();
 			binding.detach();
-			safely(split.dispose);
+			split.dispose();
 		},
 	};
 }

@@ -1,10 +1,11 @@
+import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import { deferred } from "./helpers/async.js";
 import { describe, expect, it, vi } from "vitest";
 import { resolveDisplayLayers } from "../src/config.js";
 
 const rootMenuItems = vi.hoisted(() => [] as Array<Array<Record<string, unknown>>>);
-vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@earendil-works/pi-tui")>();
+vi.mock("@oh-my-pi/pi-tui", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@oh-my-pi/pi-tui")>();
 	return {
 		...actual,
 		SelectList: class extends actual.SelectList {
@@ -387,7 +388,7 @@ describe("menu actions", () => {
 		});
 		await h.actions.selectModel({ id: "new", provider: "provider" } as never);
 		expect(h.pi.setModel).toHaveBeenLastCalledWith(h.ctx.model);
-		h.actions.setThinkingLevel("high");
+		h.actions.setThinkingLevel(ThinkingLevel.High);
 		expect(h.pi.setThinkingLevel).toHaveBeenLastCalledWith("medium");
 	});
 

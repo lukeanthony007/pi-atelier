@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { SIDEBAR_PANEL_EVENT_CHANNEL } from "../extensions/index.js";
-import { AtelierEditor } from "../src/editor.js";
 
 import { settleMicrotasks } from "./helpers/async.js";
 import {
@@ -10,9 +9,8 @@ import {
 	start,
 	command,
 	renderOverlayText,
-	mountComposer,
+	renderSidebarText,
 	withPersistedUserConfig,
-	FOOTER_THEME,
 } from "./helpers/extension.js";
 
 describe("extension registration", () => {
@@ -38,7 +36,7 @@ describe("extension registration", () => {
 					panel: { id: "vendor:queue", title: "Queue", rows: ["queued 2"] },
 				});
 				await command(h, "sidebar on");
-				const rendered = h.overlays.at(-1)?.component.render(44).join("\\n") ?? "";
+				const rendered = renderSidebarText(h);
 				expect(rendered).toContain("QUEUE");
 				expect(rendered).toContain("queued 2");
 			},
@@ -56,55 +54,10 @@ describe("extension registration", () => {
 			panel: { id: "agent", title: "Spoofed Agent", rows: ["attacker"] },
 		});
 		const opening = command(h, "display");
-		await h.mounted(1);
+		await h.mounted(0);
 		expect(renderOverlayText(h, h.overlays.length - 1, 120)).not.toContain("Spoofed Agent");
-		h.overlays[1]!.component.handleInput("\u001b");
+		h.overlays[0]!.component.handleInput("\u001b");
 		await opening;
-	});
-
-	it("registers the command and installs one footer in TUI mode", async () => {
-		const h = harness();
-		expect(h.commands.has("atelier")).toBe(true);
-		await start(h);
-		expect(h.setFooter).toHaveBeenCalledTimes(1);
-		expect(h.setEditorComponent).toHaveBeenCalledTimes(1);
-		const editorFactory = h.setEditorComponent.mock.calls[0]?.[0];
-		expect(editorFactory).toEqual(expect.any(Function));
-		const editor = editorFactory(
-			{ requestRender: vi.fn(), terminal: { rows: 24, columns: 80 } },
-			{ borderColor: (text: string) => text, selectList: {} },
-			{ matches: () => false },
-		);
-		expect(editor).toBeInstanceOf(AtelierEditor);
-		expect(editor.render(32)[0]).toMatch(/^╭─+╮$/);
-		expect(h.shortcuts).toContain("f6");
-		expect(h.shortcuts).toContain("ctrl+shift+r");
-	});
-
-	it.each([
-		{ columns: 80, rows: 6 },
-		{ columns: 18, rows: 24 },
-		{ columns: 20, rows: 24 },
-		{ columns: 22, rows: 24 },
-	])("keeps complete context in the footer at $columns×$rows", async ({ columns, rows }) => {
-		const h = harness();
-		await start(h);
-		const { tui, editor, footer } = mountComposer(h);
-		try {
-			expect(editor.render(80)[0]).toContain("● READY");
-			footer.render(80);
-			Object.assign(tui.terminal, { columns, rows });
-			expect(editor.render(columns)[0]).not.toContain("● READY");
-			const fallback = footer.render(columns).join("\n");
-			expect(fallback).toContain("● READY");
-			expect(fallback).toContain("10.0%");
-
-			Object.assign(tui.terminal, { columns: 80, rows: 24 });
-			expect(editor.render(80)[0]).toContain("10.0%");
-			expect(footer.render(80).join("\n")).not.toContain("10.0%");
-		} finally {
-			footer.dispose();
-		}
 	});
 
 	it("routes f6 to the Control Center", async () => {
@@ -113,8 +66,8 @@ describe("extension registration", () => {
 		const before = h.custom.mock.calls.length;
 
 		const opening = h.shortcutHandlers.get("f6")?.(h.ctx);
-		await h.mounted(1);
-		expect(h.overlays).toHaveLength(2);
+		await h.mounted(0);
+		expect(h.overlays).toHaveLength(1);
 
 		expect(h.custom.mock.calls.length).toBe(before + 1);
 		expect(renderOverlayText(h, h.overlays.length - 1, 80)).toContain("Atelier Control Center");
@@ -135,27 +88,23 @@ describe("extension registration", () => {
 
 			await start(h);
 
-			expect(h.overlays).toHaveLength(0);
+			expect(h.activeSidebar).toBeUndefined();
 			expect(h.setFooter).toHaveBeenCalledOnce();
 			await command(h, "sidebar on");
-			expect(h.overlays).toHaveLength(1);
+			expect(renderSidebarText(h)).toContain("AGENT");
 		});
 	});
 
 	it("starts enabled and toggles the persistent sidebar on -> off -> on", async () => {
 		const h = harness();
 		await start(h);
-		expect(h.overlays).toHaveLength(1);
-		expect(h.overlays[0]?.options).toMatchObject({
-			overlay: true,
-			overlayOptions: expect.any(Function),
-			onHandle: expect.any(Function),
-		});
-		expect(h.overlays[0]?.layout()).toMatchObject({ nonCapturing: true });
+		expect(renderSidebarText(h)).toContain("AGENT");
+		expect(h.setSidebar).toHaveBeenLastCalledWith(expect.any(Function), { width: 44, minMainWidth: 64 });
 		await command(h, "sidebar");
-		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.activeSidebar).toBeUndefined();
+		expect(h.setSidebar).toHaveBeenLastCalledWith(undefined);
 		await command(h, "sidebar");
-		expect(h.custom).toHaveBeenCalledTimes(2);
+		expect(renderSidebarText(h)).toContain("AGENT");
 	});
 
 	it("supports idempotent sidebar on and off commands", async () => {
@@ -163,24 +112,25 @@ describe("extension registration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 		await command(h, "sidebar on");
-		expect(h.custom).toHaveBeenCalledOnce();
+		expect(h.setSidebar).toHaveBeenCalledTimes(1);
 		await command(h, "sidebar off");
 		await command(h, "sidebar off");
-		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.setSidebar).toHaveBeenCalledTimes(2);
+		expect(h.activeSidebar).toBeUndefined();
 	});
 
 	it("toggles and persists sidebar tool-name details", async () => {
 		const h = harness();
 		await start(h);
 		await command(h, "sidebar on");
-		expect(renderOverlayText(h, 0, 44)).not.toContain("\n│ read");
+		expect(renderSidebarText(h)).not.toContain("\n│ read");
 
 		await command(h, "sidebar tools on");
 
 		expect(h.saveConfigPatch).toHaveBeenLastCalledWith(expect.stringContaining("pi-atelier.json"), {
 			showSidebarToolNames: true,
 		});
-		expect(renderOverlayText(h, 0, 44)).toContain("read");
+		expect(renderSidebarText(h)).toContain("read");
 		expect(h.ctx.ui.notify).toHaveBeenLastCalledWith("Sidebar tool list expanded", "info");
 
 		await command(h, "sidebar tools off");
@@ -195,7 +145,7 @@ describe("extension registration", () => {
 		await start(h);
 		await command(h, args);
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith("Usage: /atelier sidebar [on|off]", "warning");
-		expect(h.custom).toHaveBeenCalledOnce();
+		expect(h.setSidebar).toHaveBeenCalledOnce();
 	});
 
 	it("warns for invalid sidebar tool-list syntax", async () => {
@@ -206,16 +156,14 @@ describe("extension registration", () => {
 		expect(h.saveConfigPatch).not.toHaveBeenCalled();
 	});
 
-	it("keeps modeless host rendering untouched beneath the visible sidebar", async () => {
+	it("mounts the sidebar through the native host slot and removes it on hide", async () => {
 		const h = harness();
 		await start(h);
-		await command(h, "sidebar on");
-
-		expect(h.overlays[0]?.layout()).toMatchObject({ width: 44 });
-		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
-
+		expect(h.activeSidebar?.options).toEqual({ width: 44, minMainWidth: 64 });
+		expect(renderSidebarText(h)).toContain("AGENT");
 		await command(h, "sidebar off");
-		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
+		expect(h.activeSidebar).toBeUndefined();
+		expect(h.setSidebar).toHaveBeenLastCalledWith(undefined);
 	});
 
 	it("enters Resize mode with Ctrl+Shift+R only for the active visible sidebar", async () => {
@@ -250,111 +198,8 @@ describe("extension registration", () => {
 
 		await command(h, "disable");
 
-		expect(h.overlays[0]?.done).toHaveBeenCalledOnce();
+		expect(h.setSidebar).toHaveBeenLastCalledWith(undefined);
 		expect(h.terminalWrite).toHaveBeenLastCalledWith("\u001b[?1006l\u001b[?1002l");
-		expect(h.overlays[0]?.tui.render(120)).toEqual(["main:120"]);
-		expect(h.setFooter).toHaveBeenLastCalledWith(undefined);
-		expect(h.setEditorComponent).toHaveBeenLastCalledWith(undefined);
-	});
-
-	it("disable clears the session's own footer, not the invoking context's", async () => {
-		const h = harness();
-		await start(h);
-		h.setFooter.mockClear();
-		h.setEditorComponent.mockClear();
-		// Pi hands commands a context object that shares the session manager but not the UI.
-		const distinctUi = {
-			...h.ctx,
-			ui: { ...h.ctx.ui, setFooter: vi.fn(), setEditorComponent: vi.fn(), notify: vi.fn() },
-		};
-
-		await command(h, "disable", distinctUi);
-
-		expect(h.setFooter).toHaveBeenCalledWith(undefined);
-		expect(h.setEditorComponent).toHaveBeenCalledWith(undefined);
-		expect(distinctUi.ui.setFooter).not.toHaveBeenCalled();
-		expect(distinctUi.ui.setEditorComponent).not.toHaveBeenCalled();
-	});
-
-	it("disposes a mounted footer when setFooter removal throws", async () => {
-		const h = harness();
-		let mountedFooter: any;
-		const unsubscribe = vi.fn();
-		let branchChange: (() => void) | undefined;
-		h.setFooter.mockImplementation((value: unknown) => {
-			if (value === undefined) throw new Error("footer removal failed");
-			if (typeof value === "function") {
-				mountedFooter = value({ requestRender: vi.fn() }, FOOTER_THEME, {
-					getGitBranch: () => undefined,
-					getExtensionStatuses: () => new Map(),
-					onBranchChange: (callback: () => void) => {
-						branchChange = callback;
-						return unsubscribe;
-					},
-				});
-			}
-		});
-		await start(h);
-		mountedFooter.render(120);
-
-		await h.dispatch("session_shutdown", { reason: "quit" });
-
-		expect(mountedFooter).toBeDefined();
-		expect(unsubscribe).toHaveBeenCalledOnce();
-		branchChange?.();
-		await h.dispatch("session_shutdown", { reason: "quit" });
-		expect(unsubscribe).toHaveBeenCalledOnce();
-	});
-
-	it("disables a retained footer safely and does not revive it after enable", async () => {
-		const h = harness();
-		const mounted: Array<{
-			component: any;
-			requestRender: ReturnType<typeof vi.fn>;
-			branchChange: () => void;
-			unsubscribe: ReturnType<typeof vi.fn>;
-		}> = [];
-		h.setFooter.mockImplementation((value: unknown) => {
-			if (value === undefined) throw new Error("footer removal failed");
-			if (typeof value !== "function") return;
-			const requestRender = vi.fn();
-			let branchChange: (() => void) | undefined;
-			const unsubscribe = vi.fn();
-			const component = value({ requestRender }, FOOTER_THEME, {
-				getGitBranch: () => undefined,
-				getExtensionStatuses: () => new Map([["live", "live footer"]]),
-				onBranchChange: (onChange: () => void) => {
-					branchChange = onChange;
-					return unsubscribe;
-				},
-			});
-			mounted.push({ component, requestRender, branchChange: () => branchChange?.(), unsubscribe });
-		});
-
-		await start(h);
-		expect(mounted).toHaveLength(1);
-		const oldFooter = mounted[0];
-		expect(oldFooter).toBeDefined();
-		expect(oldFooter?.component.render(120).join("\n")).toContain("live footer");
-
-		await expect(command(h, "disable")).resolves.toBeUndefined();
-		expect(oldFooter?.unsubscribe).toHaveBeenCalledOnce();
-		expect(oldFooter?.component.render(120).join("\n")).not.toContain("live footer");
-		oldFooter?.branchChange();
-		expect(oldFooter?.requestRender).not.toHaveBeenCalled();
-
-		await command(h, "enable");
-		expect(mounted).toHaveLength(2);
-		oldFooter?.branchChange();
-		expect(oldFooter?.requestRender).not.toHaveBeenCalled();
-		const newFooter = mounted[1];
-		expect(newFooter).toBeDefined();
-		newFooter?.branchChange();
-		expect(newFooter?.requestRender).toHaveBeenCalledOnce();
-
-		await h.dispatch("session_shutdown", { reason: "quit" });
-		expect(newFooter?.unsubscribe).toHaveBeenCalledOnce();
-		expect(oldFooter?.unsubscribe).toHaveBeenCalledOnce();
 	});
 
 	it("passes command state to the menu controller", async () => {
@@ -362,11 +207,11 @@ describe("extension registration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 		const opening = command(h, "");
-		await h.mounted(1);
-		expect(h.overlays).toHaveLength(2);
-		const menu = renderOverlayText(h, 1, 80);
+		await h.mounted(0);
+		expect(h.overlays).toHaveLength(1);
+		const menu = renderOverlayText(h, 0, 80);
 		expect(menu).toContain("Sidebar: On");
-		h.overlays[1]?.component.handleInput("\u001b");
+		h.overlays[0]?.component.handleInput("\u001b");
 		await opening;
 	});
 
@@ -386,8 +231,8 @@ describe("extension registration", () => {
 					panel: { id: "vendor:queue", title: "Queue title", rows: ["queued"] },
 				});
 				const opening = command(h, "display");
-				await h.mounted(1);
-				expect(h.overlays).toHaveLength(2);
+				await h.mounted(0);
+				expect(h.overlays).toHaveLength(1);
 				const workspace = h.overlays.at(-1)!.component;
 				const rendered = workspace?.render(120).join("\n") ?? "";
 				expect(rendered).toContain("vendor:missing");
@@ -435,7 +280,7 @@ describe("extension registration", () => {
 		try {
 			await start(h);
 			await command(h, "sidebar on");
-			expect(renderOverlayText(h, 0, 44)).not.toContain("\u001b[38;2;");
+			expect(renderSidebarText(h)).not.toContain("\u001b[38;2;");
 		} finally {
 			vi.unstubAllEnvs();
 		}
@@ -446,8 +291,8 @@ describe("extension registration", () => {
 		await start(h);
 		const before = h.custom.mock.calls.length;
 		const opening = command(h, "display");
-		await h.mounted(1);
-		expect(h.overlays).toHaveLength(2);
+		await h.mounted(0);
+		expect(h.overlays).toHaveLength(1);
 		expect(h.custom.mock.calls.length).toBe(before + 1);
 		expect(renderOverlayText(h, h.overlays.length - 1, 80)).toContain("DISPLAY SETTINGS");
 		h.overlays.at(-1)?.component.handleInput("\u001b");
@@ -462,37 +307,8 @@ describe("extension registration", () => {
 	it("warns instead of opening the sidebar outside TUI mode", async () => {
 		const h = harness("print");
 		await command(h, "sidebar");
-		expect(h.custom).not.toHaveBeenCalled();
+		expect(h.setSidebar).not.toHaveBeenCalled();
 		expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("TUI mode"), "warning");
-	});
-
-	it("invalidates the sidebar once per actual footer status change", async () => {
-		const h = harness();
-		await start(h);
-		await command(h, "sidebar on");
-		h.overlays[0]?.requestRender.mockClear();
-		let statuses = new Map([["one", "extension one"]]);
-		const footer = h.setFooter.mock.calls[0]?.[0](
-			{ requestRender: vi.fn() },
-			{
-				fg: (_color: string, text: string) => text,
-				bold: (text: string) => text,
-				italic: (text: string) => text,
-			},
-			{
-				getGitBranch: () => undefined,
-				getExtensionStatuses: () => statuses,
-				onBranchChange: () => () => undefined,
-			},
-		);
-		footer.render(120);
-		expect(h.overlays[0]?.requestRender).toHaveBeenCalled();
-		h.overlays[0]?.requestRender.mockClear();
-		footer.render(120);
-		expect(h.overlays[0]?.requestRender).not.toHaveBeenCalled();
-		statuses = new Map([["one", "extension two"]]);
-		footer.render(120);
-		expect(h.overlays[0]?.requestRender).toHaveBeenCalled();
 	});
 
 	it("collapses activated tool names at narrow sidebar widths", async () => {
@@ -508,7 +324,7 @@ describe("extension registration", () => {
 		await start(h);
 		await command(h, "sidebar on");
 
-		const text = renderOverlayText(h, 0, 39);
+		const text = renderSidebarText(h, 39);
 		expect(text).toMatch(/Enabled\s+4 \/ 5/);
 		expect(text).not.toContain("▸");
 		expect(text).not.toContain("bash");

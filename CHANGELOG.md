@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.12.0-omp.1 — 2026-09-27
+
+- Port the full-height live sidebar to OMP's composer-owned `setSidebar` slot. Reflow transcript history when the pane is shown, hidden, resized, or hidden by a narrow terminal; retain OMP's modal overlays and native scrollback.
+- Use OMP's extension events, tools, themes, config paths, and Bun test runtime. OMP retains its own status line; Atelier's Pi footer and native sidebar graphics are unavailable in this port.
 
 ## 0.12.0 — 2026-09-26
 
