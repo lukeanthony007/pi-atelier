@@ -7,7 +7,7 @@ This fork brings Pi Atelier v0.12.0's live sidebar to [Oh My Pi (OMP)](https://o
 
 ## Quick start
 
-This fork needs an OMP build with `ExtensionUIContext.setSidebar(factory, { width, minMainWidth })`. Stock OMP 18.3.5 lacks the slot. Run the companion OMP sidebar branch rather than replacing a newer OMP installation with an older build.
+This fork needs an OMP build with `ExtensionUIContext.setSidebar(factory, { width, minMainWidth })`. The [companion OMP sidebar branch](https://github.com/lukeanthony007/animus-ts/tree/feat/omp-atelier-sidebar/omp) supplies it. That source is based on OMP 18.1.10; stock OMP 18.3.5 lacks the slot. Run the companion branch separately rather than replacing a newer OMP installation.
 
 From this fork's checkout, set `OMP_SOURCE` to the absolute path of the companion OMP checkout, then launch it with the extension:
 
